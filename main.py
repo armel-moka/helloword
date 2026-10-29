@@ -1,6 +1,50 @@
-from flask import Flask
+from math import isfinite
+
+from flask import Flask, request
+
+from utils import add
+from outfits import recommend
+from chat import chat_api
 
 app = Flask(__name__)
+app.register_blueprint(chat_api)
+
+
+@app.after_request
+def allow_local_html(response):
+    # Local file:// pages send Origin: null. Only expose the local demo endpoints.
+    if request.path in ("/api/add", "/api/outfit", "/api/chat") and request.headers.get("Origin") == "null":
+        response.headers["Access-Control-Allow-Origin"] = "null"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.vary.add("Origin")
+    return response
+
+
+@app.post("/api/outfit")
+def outfit():
+    try:
+        result = recommend(request.get_json(silent=True))
+    except ValueError as error:
+        return {"error": str(error)}, 400
+    response = app.json.response(result)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/api/add")
+def add_numbers():
+    try:
+        a = float(request.args["a"])
+        b = float(request.args["b"])
+    except (KeyError, ValueError):
+        return {"error": "Please provide two valid numbers: a and b."}, 400
+
+    result = add(a, b)
+    if not all(isfinite(value) for value in (a, b, result)):
+        return {"error": "Numbers and their sum must be finite."}, 400
+
+    return {"result": result}
 
 
 @app.get("/")
